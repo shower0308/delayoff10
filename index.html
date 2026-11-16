@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>救護延遲停休紀錄</title>
+  <!-- 載入 Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 載入 Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- 載入 Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Inter"', '"Noto Sans TC"', 'sans-serif'],
+          },
+          colors: {
+            ems: {
+              navy: '#0f294a',
+              red: '#dc2626',
+              redHover: '#b91c1c',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tag-btn {
+      transition: all 0.12s ease;
+    }
+    .tag-btn:active {
+      transform: scale(0.95);
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.2s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased">
+
+  <!-- 極簡頂部標題列 -->
+  <header class="bg-ems-navy text-white shadow-sm sticky top-0 z-20 border-b-2 border-ems-red">
+    <div class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="bg-ems-red p-1.5 rounded-lg flex items-center justify-center">
+          <i data-lucide="ambulance" class="w-5 h-5 text-white"></i>
+        </div>
+        <h1 class="text-base sm:text-lg font-bold tracking-wide">救護延遲停休紀錄</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="loadFromStorage()" title="重新整理同步雲端" class="text-xs text-slate-200 hover:text-white bg-slate-800/50 hover:bg-slate-800 px-2.5 py-1 rounded-lg flex items-center gap-1 transition">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span>同步雲端</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容區（單欄極簡卡片式版面） -->
+  <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-6 space-y-6">
+
+    <!-- 卡片一：快速登記表單（僅保留 4 個核心欄位） -->
+    <section class="bg-white rounded-2xl shadow-xs border border-slate-200 p-5 sm:p-6">
+      <form id="recordForm" onsubmit="handleFormSubmit(event)" class="space-y-5">
+
+        <!-- 1. 出勤人員 (標籤快選) -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-bold text-slate-800">
+              1. 出勤人員 <span class="text-xs font-normal text-slate-500">(單選)</span>
+            </label>
+            <button type="button" onclick="toggleStaffManager()"
+              class="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg flex items-center gap-1 transition">
+              <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+              <span id="staffManagerToggleText">管理人員標籤</span>
+            </button>
+          </div>
+
+          <!-- 可展開的極簡人員管理區塊 -->
+          <div id="staffManagerPanel" class="hidden mb-3 p-3 bg-slate-100 rounded-xl border border-slate-200 space-y-2.5 animate-fade-in">
+            <div class="flex gap-2">
+              <input type="text" id="newStaffInput" placeholder="輸入隊員姓名後按新增（自動選取）" maxlength="10"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();addNewStaff();}"
+                class="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" />
+              <button type="button" onclick="addNewStaff()"
+                class="bg-ems-navy hover:bg-blue-900 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition shrink-0">
+                新增標籤
+              </button>
+            </div>
+            <p class="text-[11px] text-slate-500">點擊下方標籤右上角的「×」即可移除該人員：</p>
+            <div id="manageStaffList" class="flex flex-wrap gap-1.5">
+              <!-- 由 JS 渲染可刪除的人員小標籤 -->
+            </div>
+          </div>
+
+          <!-- 人員標籤快選區 -->
+          <div id="staffTagsContainer" class="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 min-h-[52px]">
+            <!-- 由 JS 動態渲染 -->
+          </div>
+          <p id="staffError" class="hidden text-xs text-ems-red mt-1.5 font-medium">請點選一位出勤人員</p>
+        </div>
+
+        <!-- 2 & 4 並排：出勤日期 & 救護紀錄編號 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- 2. 出勤日期 -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label for="dutyDate" class="text-sm font-bold text-slate-800">2. 出勤日期</label>
+              <div class="flex gap-1">
+                <button type="button" onclick="setQuickDate(-1)" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded transition">昨天</button>
+                <button type="button" onclick="setQuickDate(0)" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded transition">今天</button>
+              </div>
+            </div>
+            <input type="date" id="dutyDate" required
+              class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+          </div>
+
+          <!-- 4. 救護紀錄編號 -->
+          <div>
+            <label for="caseNumber" class="block text-sm font-bold text-slate-800 mb-1.5">4. 救護紀錄編號</label>
+            <input type="text" id="caseNumber" required placeholder="例如：1151116001"
+              class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+          </div>
+        </div>
+
+        <!-- 3. 延遲休假時間（輸入起訖時間即時自動計算時長，並保留可直接編輯） -->
+        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label for="delayTimeText" class="text-sm font-bold text-slate-800">3. 延遲休假時間</label>
+            <div class="flex items-center gap-1.5 text-xs">
+              <span class="text-slate-500">起始：</span>
+              <input type="time" id="startTime" value="08:00"
+                oninput="syncTimeTextFromPickers()" onchange="syncTimeTextFromPickers()"
+                class="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+              <span class="text-slate-500 ml-1">結束：</span>
+              <input type="time" id="endTime" value="08:45"
+                oninput="syncTimeTextFromPickers()" onchange="syncTimeTextFromPickers()"
+                class="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+            </div>
+          </div>
+
+          <input type="text" id="delayTimeText" required placeholder="例如：08:00-08:45 (45分)"
+            class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+        </div>
+
+        <!-- 送出按鈕 -->
+        <button type="submit"
+          class="w-full py-3 px-4 bg-ems-red hover:bg-ems-redHover active:scale-[0.99] text-white font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition text-base">
+          <i data-lucide="plus-circle" class="w-5 h-5"></i>
+          <span>新增紀錄</span>
+        </button>
+      </form>
+    </section>
+
+    <!-- 卡片二：紀錄列表與人員分組匯出 -->
+    <section class="space-y-4">
+      <!-- 列表頂部工具列：月份篩選 + 匯出 -->
+      <div class="bg-white rounded-2xl shadow-xs border border-slate-200 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <!-- 月份與人員篩選 -->
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="filterMonth" onchange="renderRecords()"
+              class="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600">
+            </select>
+            <select id="filterStaff" onchange="renderRecords()"
+              class="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600">
+            </select>
+            <span id="recordCountBadge" class="text-xs font-semibold text-slate-500 px-2">共 0 筆</span>
+          </div>
+
+          <!-- 匯出與清空按鈕 -->
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="copyTextList()"
+              class="text-xs sm:text-sm bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer">
+              <i data-lucide="copy" class="w-4 h-4 text-slate-500"></i>
+              <span>複製文字清單</span>
+            </button>
+            <button type="button" onclick="exportCSV()"
+              class="text-xs sm:text-sm bg-ems-navy hover:bg-blue-900 text-white font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>匯出 CSV (Excel)</span>
+            </button>
+            <button type="button" onclick="promptClearFiltered()" title="清空目前篩選的紀錄"
+              class="text-xs sm:text-sm text-slate-500 hover:text-ems-red hover:bg-red-50 border border-transparent hover:border-red-200 font-medium px-2.5 py-2 rounded-xl flex items-center gap-1 transition cursor-pointer">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+              <span>清空紀錄</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 依人員分組的區塊容器 -->
+      <div id="groupedRecordsContainer" class="space-y-4">
+        <!-- 由 JS 依出勤人員分組渲染各獨立卡片 -->
+      </div>
+
+      <!-- 空資料提示 -->
+      <div id="emptyState" class="hidden bg-white rounded-2xl shadow-xs border border-slate-200 py-12 px-4 text-center">
+        <p class="text-sm font-bold text-slate-500">目前沒有符合條件的紀錄</p>
+        <p class="text-xs text-slate-400 mt-1">請於上方表單點選一位出勤人員並輸入資料新增</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 自訂確認對話框 -->
+  <div id="confirmModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5 space-y-4 animate-fade-in">
+      <h3 id="confirmTitle" class="font-bold text-base text-slate-800">確認刪除</h3>
+      <p id="confirmMessage" class="text-sm text-slate-600">確定要刪除嗎？</p>
+      <div class="flex justify-end gap-2 pt-1">
+        <button onclick="closeConfirmModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition">取消</button>
+        <button id="confirmOkBtn" class="px-4 py-2 text-sm font-bold text-white bg-ems-red hover:bg-ems-redHover rounded-xl transition">確定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 輕量提示 Toast -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- 隱藏的複製專用 textarea -->
+  <textarea id="clipboardHelper" class="fixed -top-96 left-0 opacity-0 pointer-events-none"></textarea>
+
+  <script>
+    // ==================== 雲端 API 設定 ====================
+    const API_URL = 'https://script.google.com/macros/s/AKfycbwFp4hWvsgbz_XRQhBP9vQTurG2Ee9Nilz-vODerDDcmo3bUmhcy9U51uNrgvSkVuxi/exec';
+
+    // ==================== 狀態與 LocalStorage 鍵值 ====================
+    const STORAGE_KEYS = {
+      STAFF: 'ems_simple_staff_v4'
+    };
+
+    const DEFAULT_STAFF = [
+      '21張永松',
+      '23王俊凱',
+      '24陳瑋杰',
+      '25胡育銓',
+      '26鄭凱澧',
+      '27葉繼謙',
+      '28林群祐'
+    ];
+
+    let staffList = [];
+    let selectedStaff = '';
+    let records = [];
+    let isStaffManagerOpen = false;
+
+    // ==================== 初始化 ====================
+    window.addEventListener('DOMContentLoaded', () => {
+      loadStaffFromStorage();
+      setQuickDate(0);
+      syncTimeTextFromPickers();
+      renderStaffTags();
+      loadFromStorage();
+      lucide.createIcons();
+    });
+
+    // 取得當地日期的 YYYY-MM-DD 字串（直接依據本地時區，絕不經由 UTC 轉換）
+    function getLocalDateString(offsetDays = 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    // 將任何傳入的日期字串（無論是帶 T 的 ISO 格式或純字串）精確轉成 YYYY/MM/DD 呈現
+    function formatDisplayDate(dateStr) {
+      if (!dateStr) return '';
+      let cleanStr = String(dateStr).trim();
+      
+      // 處理含有 T 的時間戳記，取絕對日期部分
+      if (cleanStr.includes('T')) {
+        cleanStr = cleanStr.split('T')[0];
+      }
+      
+      const parts = cleanStr.split('-');
+      if (parts.length === 3) {
+        const [yyyy, mm, dd] = parts;
+        return `${yyyy}/${mm}/${dd}`;
+      }
+      return cleanStr;
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function loadStaffFromStorage() {
+      try {
+        const savedStaff = localStorage.getItem(STORAGE_KEYS.STAFF);
+        staffList = savedStaff ? JSON.parse(savedStaff) : [...DEFAULT_STAFF];
+        if (!savedStaff) saveStaff();
+      } catch (e) {
+        staffList = [...DEFAULT_STAFF];
+      }
+    }
+
+    function saveStaff() {
+      try {
+        localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(staffList));
+      } catch (e) {
+        console.error('儲存人員名單失敗', e);
+      }
+    }
+
+    // 從 Google 雲端載入紀錄
+    async function loadFromStorage() {
+      showToast('正在同步雲端資料...', 'success');
+      try {
+        const response = await fetch(API_URL);
+        const result = await response.json();
+        if (result.status === 'success') {
+          records = (result.data || []).map(r => {
+            let rawDate = String(r.date || '').trim();
+            
+            // 【核心修正】若雲端回傳的日期後面帶有時區偏移或 T00:00:00.000Z，
+            // 透過 JavaScript 的 Date 解析時常被強制轉為 UTC 導致少一天。
+            // 這裡我們直接強制用字串切割，保留最原始純粹的 YYYY-MM-DD 字串！
+            if (rawDate.includes('T')) {
+              rawDate = rawDate.split('T')[0];
+            } else if (rawDate.length > 10) {
+              rawDate = rawDate.substring(0, 10);
+            }
+
+            return {
+              ...r,
+              staff: String(r.staff || ''),
+              date: rawDate,
+              delayTime: String(r.delayTime || ''),
+              caseNumber: String(r.caseNumber || '')
+            };
+          });
+          syncCloudStaffToLocal();
+          showToast('雲端資料同步完成', 'success');
+        } else {
+          showToast('載入雲端資料失敗', 'error');
+        }
+      } catch (e) {
+        console.error('連線雲端失敗', e);
+        showToast('網路連線異常，無法取得雲端資料', 'error');
+      }
+      populateFilters();
+      renderRecords();
+    }
+
+    function syncCloudStaffToLocal() {
+      let updated = false;
+      records.forEach(r => {
+        if (r.staff && !staffList.includes(r.staff)) {
+          staffList.push(r.staff);
+          updated = true;
+        }
+      });
+      if (updated) {
+        saveStaff();
+        renderStaffTags();
+      }
+    }
+
+    // ==================== 1. 出勤人員標籤快選 ====================
+    function renderStaffTags() {
+      const container = document.getElementById('staffTagsContainer');
+      if (staffList.length === 0) {
+        container.innerHTML = `<span class="text-xs text-slate-400 py-1">尚無人員標籤，請點右上角“管理人員標籤”建立</span>`;
+      } else {
+        container.innerHTML = staffList.map(name => {
+          const active = selectedStaff === name;
+          const cls = active
+            ? 'bg-ems-navy text-white border-ems-navy shadow-xs ring-2 ring-ems-navy/20'
+            : 'bg-white text-slate-700 border-slate-300 hover:border-blue-400';
+          return `
+            <button type="button" onclick="selectSingleStaff('${escapeHtml(name)}')"
+              class="tag-btn px-3.5 py-2 rounded-xl text-sm font-bold border flex items-center gap-1.5 cursor-pointer select-none ${cls}">
+              <span class="w-2 h-2 rounded-full ${active ? 'bg-emerald-400' : 'bg-slate-300'}"></span>
+              <span>${escapeHtml(name)}</span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      const manageContainer = document.getElementById('manageStaffList');
+      manageContainer.innerHTML = staffList.map((name, idx) => `
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700">
+          ${escapeHtml(name)}
+          <button type="button" onclick="removeStaff(${idx})" class="text-slate-400 hover:text-ems-red ml-0.5 font-bold">×</button>
+        </span>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    function selectSingleStaff(name) {
+      selectedStaff = (selectedStaff === name) ? '' : name;
+      document.getElementById('staffError').classList.add('hidden');
+      renderStaffTags();
+    }
+
+    function toggleStaffManager() {
+      isStaffManagerOpen = !isStaffManagerOpen;
+      const panel = document.getElementById('staffManagerPanel');
+      const toggleText = document.getElementById('staffManagerToggleText');
+      if (isStaffManagerOpen) {
+        panel.classList.remove('hidden');
+        toggleText.textContent = '收起管理';
+        document.getElementById('newStaffInput').focus();
+      } else {
+        panel.classList.add('hidden');
+        toggleText.textContent = '管理人員標籤';
+      }
+    }
+
+    function addNewStaff() {
+      const input = document.getElementById('newStaffInput');
+      const name = input.value.trim();
+      if (!name) return;
+
+      if (staffList.includes(name)) {
+        selectedStaff = name;
+        document.getElementById('staffError').classList.add('hidden');
+        input.value = '';
+        renderStaffTags();
+        showToast(`人員“${name}”已在名單中，已為您自動選取`, 'success');
+        return;
+      }
+
+      staffList.push(name);
+      saveStaff();
+      input.value = '';
+
+      selectedStaff = name;
+      document.getElementById('staffError').classList.add('hidden');
+
+      renderStaffTags();
+      populateFilters();
+
+      const existingCount = records.filter(r => r.staff === name).length;
+      if (existingCount > 0) {
+        renderRecords();
+        showToast(`已新增並帶入“${name}”（同步載入 ${existingCount} 筆既有紀錄）`, 'success');
+      } else {
+        showToast(`已新增人員“${name}”並自動選取`, 'success');
+      }
+    }
+
+    function removeStaff(index) {
+      const removed = staffList[index];
+      staffList.splice(index, 1);
+      if (selectedStaff === removed) selectedStaff = '';
+      saveStaff();
+      renderStaffTags();
+      populateFilters();
+    }
+
+    // ==================== 2 & 3. 日期與延遲休假時間快算 ====================
+    function setQuickDate(offsetDays) {
+      document.getElementById('dutyDate').value = getLocalDateString(offsetDays);
+    }
+
+    function syncTimeTextFromPickers() {
+      const startVal = document.getElementById('startTime').value;
+      const endVal = document.getElementById('endTime').value;
+      if (!startVal || !endVal) return;
+
+      const [sh, sm] = startVal.split(':').map(Number);
+      const [eh, em] = endVal.split(':').map(Number);
+      let diffMins = (eh * 60 + em) - (sh * 60 + sm);
+      if (diffMins < 0) diffMins += 24 * 60;
+
+      let durationLabel = '';
+      if (diffMins >= 60) {
+        const hrs = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        durationLabel = mins > 0 ? `${hrs}小時${mins}分` : `${hrs}小時`;
+      } else {
+        durationLabel = `${diffMins}分`;
+      }
+
+      document.getElementById('delayTimeText').value = `${startVal}-${endVal} (${durationLabel})`;
+    }
+
+    // ==================== 新增紀錄（寫入雲端） ====================
+    async function handleFormSubmit(event) {
+      event.preventDefault();
+
+      if (!selectedStaff) {
+        document.getElementById('staffError').classList.remove('hidden');
+        showToast('請點選一位出勤人員', 'error');
+        return;
+      }
+
+      const dutyDate = document.getElementById('dutyDate').value; // 格式如 "2026-11-06"
+      const delayTime = document.getElementById('delayTimeText').value.trim();
+      const caseNumber = document.getElementById('caseNumber').value.trim();
+
+      if (!dutyDate || !delayTime || !caseNumber) {
+        showToast('請完整填寫所有欄位', 'error');
+        return;
+      }
+
+      // 【核心防護】直接傳送純字串，避免任何日期物件轉換導致減一天
+      const newRecord = {
+        id: 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        staff: String(selectedStaff),
+        date: dutyDate, 
+        delayTime: String(delayTime),
+        caseNumber: String(caseNumber)
+      };
+
+      showToast('正在同步至雲端...', 'success');
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'add', record: newRecord })
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+          records.unshift(newRecord);
+          populateFilters();
+          renderRecords();
+          document.getElementById('caseNumber').value = '';
+          showToast(`已成功新增並同步至雲端`, 'success');
+        } else {
+          showToast('同步雲端失敗', 'error');
+        }
+      } catch (e) {
+        console.error('送出表單錯誤', e);
+        showToast('網路錯誤，無法寫入雲端', 'error');
+      }
+    }
+
+    // ==================== 篩選與依人員分組渲染 ====================
+    function populateFilters() {
+      const monthSelect = document.getElementById('filterMonth');
+      const staffSelect = document.getElementById('filterStaff');
+
+      const prevMonth = monthSelect.value;
+      const prevStaff = staffSelect.value;
+
+      const currentYM = getLocalDateString(0).slice(0, 7);
+      const monthsSet = new Set([currentYM]);
+      records.forEach(r => {
+        if (r.date && String(r.date).length >= 7) monthsSet.add(String(r.date).slice(0, 7));
+      });
+
+      const sortedMonths = Array.from(monthsSet).sort().reverse();
+      monthSelect.innerHTML = sortedMonths.map(ym => {
+        const [y, m] = ym.split('-');
+        return `<option value="${ym}">${y}年${m}月${ym === currentYM ? ' (本月)' : ''}</option>`;
+      }).join('') + `<option value="ALL">全部月份</option>`;
+
+      monthSelect.value = (prevMonth && (sortedMonths.includes(prevMonth) || prevMonth === 'ALL'))
+        ? prevMonth
+        : currentYM;
+
+      const allStaffSet = new Set(staffList);
+      records.forEach(r => {
+        if (r.staff) allStaffSet.add(String(r.staff));
+      });
+
+      staffSelect.innerHTML = `<option value="ALL">全部人員</option>` +
+        Array.from(allStaffSet).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+
+      staffSelect.value = (prevStaff && (allStaffSet.has(prevStaff) || prevStaff === 'ALL'))
+        ? prevStaff
+        : 'ALL';
+    }
+
+    function getFilteredRecords() {
+      const mFilter = document.getElementById('filterMonth').value;
+      const sFilter = document.getElementById('filterStaff').value;
+
+      return records.filter(r => {
+        if (mFilter !== 'ALL' && !String(r.date).startsWith(mFilter)) return false;
+        if (sFilter !== 'ALL' && String(r.staff) !== sFilter) return false;
+        return true;
+      });
+    }
+
+    function getGroupedByStaff() {
+      const filtered = getFilteredRecords();
+      const groupMap = new Map();
+
+      staffList.forEach(name => groupMap.set(name, []));
+
+      filtered.forEach(r => {
+        const key = String(r.staff || '未指定人員');
+        if (!groupMap.has(key)) groupMap.set(key, []);
+        groupMap.get(key).push(r);
+      });
+
+      const result = [];
+      groupMap.forEach((items, staffName) => {
+        if (items.length > 0) {
+          items.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+          result.push({ staff: staffName, items });
+        }
+      });
+
+      return result;
+    }
+
+    function renderRecords() {
+      const grouped = getGroupedByStaff();
+      const totalCount = grouped.reduce((sum, g) => sum + g.items.length, 0);
+      document.getElementById('recordCountBadge').textContent = `共 ${grouped.length} 人 / ${totalCount} 筆`;
+
+      const container = document.getElementById('groupedRecordsContainer');
+      const emptyState = document.getElementById('emptyState');
+
+      if (grouped.length === 0) {
+        container.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+
+      container.innerHTML = grouped.map(group => `
+        <div class="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden animate-fade-in">
+          <!-- 人員區塊標題列 -->
+          <div class="px-4 sm:px-5 py-3 bg-slate-100/90 border-b border-slate-200 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-ems-navy"></span>
+              <h3 class="text-base font-bold text-ems-navy">${escapeHtml(group.staff)}</h3>
+            </div>
+            <span class="text-xs font-bold bg-white text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-full">
+              ${group.items.length} 筆
+            </span>
+          </div>
+
+          <!-- 桌機版該人員明細表格 -->
+          <div class="hidden sm:block overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50/60 border-b border-slate-100 text-xs font-bold text-slate-500">
+                  <th class="py-2.5 px-5 w-1/3">出勤日期</th>
+                  <th class="py-2.5 px-4 w-1/3">延遲休假時間</th>
+                  <th class="py-2.5 px-4">救護紀錄編號</th>
+                  <th class="py-2.5 px-5 text-right w-16">刪除</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-sm">
+                ${group.items.map(r => `
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="py-3 px-5 text-slate-800 font-semibold whitespace-nowrap">${escapeHtml(formatDisplayDate(r.date))}</td>
+                    <td class="py-3 px-4 text-ems-red font-bold whitespace-nowrap">${escapeHtml(r.delayTime)}</td>
+                    <td class="py-3 px-4 font-mono font-semibold text-slate-800">${escapeHtml(r.caseNumber)}</td>
+                    <td class="py-3 px-5 text-right">
+                      <button type="button" onclick="deleteRecord('${r.id}')" title="刪除此筆"
+                        class="p-1.5 text-slate-400 hover:text-ems-red hover:bg-red-50 rounded-lg transition">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 手機版該人員明細卡片 -->
+          <div class="sm:hidden divide-y divide-slate-100">
+            ${group.items.map(r => `
+              <div class="px-4 py-3 flex items-center justify-between gap-3">
+                <div class="space-y-0.5 text-xs">
+                  <div class="font-bold text-slate-800 text-sm">${escapeHtml(formatDisplayDate(r.date))}</div>
+                  <div class="text-ems-red font-bold">延遲時間：${escapeHtml(r.delayTime)}</div>
+                  <div class="text-slate-600 font-mono">救護編號：${escapeHtml(r.caseNumber)}</div>
+                </div>
+                <button type="button" onclick="deleteRecord('${r.id}')" title="刪除此筆"
+                  class="p-2 text-slate-400 hover:text-ems-red hover:bg-red-50 rounded-lg transition shrink-0">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    // ==================== 刪除與清空 ====================
+    function deleteRecord(id) {
+      openConfirmModal('刪除紀錄', '確定要從雲端刪除這筆延遲停休紀錄嗎？', async () => {
+        showToast('正在更新雲端...', 'success');
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'delete', id: id })
+          });
+          records = records.filter(r => r.id !== id);
+          populateFilters();
+          renderRecords();
+          showToast('已從雲端刪除', 'success');
+        } catch (e) {
+          console.error('刪除失敗', e);
+          showToast('刪除失敗', 'error');
+        }
+      });
+    }
+
+    function promptClearFiltered() {
+      const filtered = getFilteredRecords();
+      if (filtered.length === 0) {
+        showToast('目前篩選條件下沒有可清空的紀錄', 'error');
+        return;
+      }
+      const mVal = document.getElementById('filterMonth').value;
+      const sVal = document.getElementById('filterStaff').value;
+      const targetDesc = `${mVal === 'ALL' ? '全部月份' : mVal} / ${sVal === 'ALL' ? '全部人員' : sVal}`;
+
+      openConfirmModal(
+        '清空篩選紀錄',
+        `確定要從雲端清空“${targetDesc}”共 ${filtered.length} 筆紀錄嗎？此動作無法復原。`,
+        async () => {
+          showToast('正在批次刪除雲端紀錄...', 'success');
+          const idsToRemove = filtered.map(r => r.id);
+          try {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'clearFiltered', ids: idsToRemove })
+            });
+            const removeSet = new Set(idsToRemove);
+            records = records.filter(r => !removeSet.has(r.id));
+            populateFilters();
+            renderRecords();
+            showToast(`已清空 ${idsToRemove.length} 筆紀錄`, 'success');
+          } catch (e) {
+            console.error('清空失敗', e);
+            showToast('清空失敗', 'error');
+          }
+        }
+      );
+    }
+
+    // ==================== 匯出功能 ====================
+    function exportCSV() {
+      try {
+        const grouped = getGroupedByStaff();
+        if (grouped.length === 0) {
+          showToast('目前沒有可匯出的紀錄', 'error');
+          return;
+        }
+
+        const headers = ['出勤人員', '出勤日期', '延遲休假時間', '救護紀錄編號'];
+        const csvRows = [headers.join(',')];
+
+        grouped.forEach((group, groupIndex) => {
+          group.items.forEach(r => {
+            const safeStaff = String(r.staff ?? '').replace(/"/g, '""');
+            const safeDate = String(formatDisplayDate(r.date) ?? '').replace(/"/g, '""');
+            const safeDelay = String(r.delayTime ?? '').replace(/"/g, '""');
+            const safeCase = String(r.caseNumber ?? '').replace(/"/g, '""');
+
+            csvRows.push([
+              `"${safeStaff}"`,
+              `"${safeDate}"`,
+              `"${safeDelay}"`,
+              `="${safeCase}"`
+            ].join(','));
+          });
+          if (groupIndex < grouped.length - 1) {
+            csvRows.push(',,,');
+          }
+        });
+
+        const csvString = '\uFEFF' + csvRows.join('\r\n');
+        const mVal = document.getElementById('filterMonth').value;
+        const sVal = document.getElementById('filterStaff').value;
+        const fileName = `救護延遲停休_${mVal === 'ALL' ? '全部' : mVal}${sVal !== 'ALL' ? '_' + sVal : ''}.csv`;
+
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+          window.navigator.msSaveOrOpenBlob(blob, fileName);
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.style.display = 'none';
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          }, 1000);
+        }
+
+        const totalCount = grouped.reduce((sum, g) => sum + g.items.length, 0);
+        showToast(`已匯出 ${grouped.length} 位人員（共 ${totalCount} 筆）CSV`, 'success');
+      } catch (err) {
+        console.error('匯出 CSV 失敗:', err);
+        showToast('匯出發生錯誤：' + err.message, 'error');
+      }
+    }
+
+    function copyTextList() {
+      const grouped = getGroupedByStaff();
+      if (grouped.length === 0) {
+        showToast('目前沒有可複製的紀錄', 'error');
+        return;
+      }
+
+      const blocks = grouped.map(group => {
+        const lines = group.items.map(r => `${formatDisplayDate(r.date)} | ${r.delayTime} | ${r.caseNumber}`);
+        return `【${group.staff}】\n${lines.join('\n')}`;
+      });
+
+      const helper = document.getElementById('clipboardHelper');
+      helper.value = blocks.join('\n\n');
+      helper.select();
+      helper.setSelectionRange(0, 99999);
+
+      try {
+        document.execCommand('copy');
+        showToast(`已複製 ${grouped.length} 位人員的分組文字清單`, 'success');
+      } catch (e) {
+        showToast('複製失敗，請改用匯出 CSV', 'error');
+      }
+    }
+
+    // ==================== 確認視窗與 Toast ====================
+    function openConfirmModal(title, message, onConfirm) {
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMessage').textContent = message;
+      const modal = document.getElementById('confirmModal');
+      const okBtn = document.getElementById('confirmOkBtn');
+      okBtn.onclick = () => {
+        closeConfirmModal();
+        onConfirm();
+      };
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeConfirmModal() {
+      const modal = document.getElementById('confirmModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const bgClass = type === 'error' ? 'bg-ems-red text-white' : 'bg-slate-800 text-white';
+      toast.className = `${bgClass} px-4 py-2.5 rounded-xl shadow-lg text-xs sm:text-sm font-bold flex items-center gap-2 animate-fade-in`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.2s ease';
+        setTimeout(() => toast.remove(), 200);
+      }, 2500);
+    }
+  </script>
+</body>
+</html>
